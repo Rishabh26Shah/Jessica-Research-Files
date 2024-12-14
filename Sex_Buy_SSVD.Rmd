@@ -1,0 +1,524 @@
+---
+title: "Sex_Buy_SSVD"
+author: "Sarah Van Dyk"
+date: "2024-11-30"
+output: html_document
+---
+
+#Part One Cleaning Data
+
+##Load Library and Data 
+```{r}
+#Load Packages
+library(tidyverse)
+library(haven)
+library(gt)
+
+
+#Load Data
+setwd("~/Library/CloudStorage/Box-Box/Sarah Sowell UG-HopeNet Datasets")
+sexBuy <- read_dta("72mo_updated_20220816_SexBehavior-Violence_v0.dta")
+
+head(sexBuy)
+table(sexBuy$female)
+
+
+#Set Aside Second DF for Data w/ Females
+sexBuy_all <- sexBuy
+
+
+#Remove Women
+sexBuy<- subset(sexBuy, (sexBuy$female == 0))
+
+
+
+```
+#Summary Statistics
+```{r}
+#Create Variable TransSex (Main DV)
+sexBuy$transSex <- ifelse(!is.na(sexBuy$pastyr_sexworker) & sexBuy$pastyr_sexworker == 1, 1,
+                   ifelse(!is.na(sexBuy$pastyr_gavegiftsex) & sexBuy$pastyr_gavegiftsex == 1, 1,0))
+
+#Create IVs needed to filter data
+
+#Binge Drinking
+sexBuy$binge_drink <- ifelse(sexBuy$whenalcohol > 3,1,0)
+sexBuy$binge_drink <- ifelse(is.na(sexBuy$binge_drink), 0, sexBuy$binge_drink)
+
+
+#Early Debut Binary 
+sexBuy$early_sex_debut <- ifelse(sexBuy$firstsex_age < 15, 1,0)
+
+#Forced Debut Binary
+sexBuy$nonconsent_start <- ifelse(sexBuy$firstsex_voluntary ==1,0,1)
+
+#Current Abuse# Compute 'current_abuse' as the sum of 'forcesex_nonphys' and 'forcesex', and add 1
+sexBuy$current_abuse <- rowSums(sexBuy[c("forcesex_nonphys", "forcesex")], na.rm = TRUE) 
+
+# Create 'current_abuse_b' based on the 'current_abuse' value
+sexBuy$current_abuse_b <- ifelse(sexBuy$current_abuse > 0, 1, 0)
+
+
+#Historical Abuse
+sexBuy$historical_sex_abuse <- rowSums(sexBuy[c("early_sex_debut", "nonconsent_start", "ace_5", "ace_6")] >0, na.rm = TRUE)
+
+# Create 'hist_sex_b' based on the value of 'historical_sex_abuse'
+sexBuy$hist_sex_b <- ifelse(sexBuy$historical_sex_abuse > 0, 1, 0)
+
+
+#Physical Violence
+sexBuy$phys_violence_index <- rowSums(sexBuy[c("slap", "push", "kick", "weapon", "insult", "threaten", "twisted", "choke")], na.rm = TRUE)
+
+# Create 'hphys_viol_b' based on the value of 'phys_violence_index'
+sexBuy$phys_viol_b <- ifelse(sexBuy$phys_violence_index > 0, 1, 0)
+
+#Create Abuse Variable
+sexBuy$newAbuse <- rowSums(sexBuy[, c("ace_1", "ace_2", "ace_3", "ace_4")] > 0)
+
+table(sexBuy$newAbuse)
+
+
+#Subset only by men included in final analysis 
+sexBuy <- sexBuy %>%
+  dplyr::filter(!is.na(transSex), 
+                !is.na(binge_drink), 
+                !is.na(ace_aphys), 
+                !is.na(current_abuse), 
+                !is.na(historical_sex_abuse), 
+                !is.na(phys_viol_b))
+
+
+
+```
+
+##Analysis Distribution of Background Charateristics 
+```{r}
+#Martial Status 
+table(sexBuy$mstatus)
+489/694
+
+#Age
+sexBuy$age_below_30 <- ifelse(sexBuy$age < 31, 1,0)
+table(sexBuy$age_below_30)
+493/694
+
+#Sex Ever
+table(sexBuy$sex_ever)
+21/(21+673)
+
+#Days Drinking 
+sexBuy$alcdays_w_no_drink <- ifelse(is.na(sexBuy$alcoholdays), 0, sexBuy$alcoholdays)
+table(sexBuy$alcdays_w_no_drink)
+mean(sexBuy$alcdays_w_no_drink, na.rm=TRUE)
+sd(sexBuy$alcdays_w_no_drink, na.rm=TRUE)
+385/694
+
+
+#HIV Status
+table(sexBuy$hivstat)
+67/694
+
+#HIV Risk
+table(sexBuy$hiv_risk)
+71/(71+181+363)
+
+names(sexBuy)
+#Total Aces
+table(sexBuy$total_ace)
+74/694
+13/694
+mean(sexBuy$total_ace)
+sd(sexBuy$total_ace)
+
+#Sexual Abuse
+table(sexBuy$hist_sex_b)
+62/694
+
+#Sexual Abuse
+table(sexBuy$current_abuse_b)
+58/694
+
+table(sexBuy$hist_sex_b,sexBuy$current_abuse_b)
+8/694
+```
+
+##Create Table of Summary Stats for Non-Binary Variables
+```{r}
+#Create Needed Variables
+sexBuy$married <- ifelse(sexBuy$mstatus >1,0,1)
+
+
+# Calculate overall averages for alcoholdays, hiv_risk, and total_ace
+overall_stats <- tibble(
+  avg_alcoholdays = round(mean(sexBuy$alcdays_w_no_drink, na.rm = TRUE), 1),
+  sd_alcoholdays = round(sd(sexBuy$alcoholdays, na.rm = TRUE), 1),
+  avg_hiv_risk = round(mean(sexBuy$hiv_risk, na.rm = TRUE), 1),
+  sd_hiv_risk = round(sd(sexBuy$hiv_risk, na.rm = TRUE), 1),
+  avg_total_ace = round(mean(sexBuy$total_ace, na.rm = TRUE), 1),
+  sd_total_ace = round(sd(sexBuy$total_ace, na.rm = TRUE), 1)
+)
+
+# Calculate stratified averages based on transSex
+stratified_stats <- sexBuy %>%
+  group_by(transSex) %>%
+  summarise(
+    avg_alcoholdays = round(mean(alcdays_w_no_drink, na.rm = TRUE), 1),
+    sd_alcoholdays = round(sd(alcoholdays, na.rm = TRUE), 1),
+    avg_hiv_risk = round(mean(hiv_risk, na.rm = TRUE), 1),
+    sd_hiv_risk = round(sd(hiv_risk, na.rm = TRUE), 1),
+    avg_total_ace = round(mean(total_ace, na.rm = TRUE), 1),
+    sd_total_ace = round(sd(total_ace, na.rm = TRUE), 1)
+  )
+
+
+# Display the table
+overall_stats
+stratified_stats
+
+```
+
+```{r}
+# Assuming 'sexBuy' is your dataset
+sexBuy$hfiascat
+
+# Calculate counts and percentages for each variable
+table_data <- sexBuy %>%
+  dplyr::select(age_below_30, sex_ever, hivstat, hist_sex_b, hfiascat,current_abuse_b, binge_drink, married, ace_fviol, ace_aphys, transSex) %>%
+  gather(key = "variable", value = "value", -transSex) %>%  # Convert to long format
+  group_by(variable, transSex) %>%
+  summarize(
+    count_1 = sum(value == 1, na.rm = TRUE),
+    total = n(),
+    percent_1 = (count_1 / total) * 100
+  ) %>%
+  ungroup()
+
+# Create the GT table
+gt_table <- table_data %>%
+  gt() %>%
+  tab_header(
+    title = "Counts and Percentages of 1 for Each Variable Stratified by transSex"
+  ) %>%
+  cols_label(
+    variable = "Variable",
+    transSex = "transSex",
+    count_1 = "Count of 1",
+    percent_1 = "Percent of 1 (%)"
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = everything()
+  ) %>%
+  tab_spanner_delim(delim = "_")
+
+# Display the table
+gt_table
+
+
+#Ungrouped
+table_data <- sexBuy %>%
+  dplyr::select(age_below_30, sex_ever, hivstat, hist_sex_b,hfiascat, current_abuse_b, binge_drink, married, ace_fviol, ace_aphys, transSex) %>%
+  gather(key = "variable", value = "value", -transSex) %>%  # Convert to long format
+  group_by(variable) %>%
+  summarize(
+    count_1 = sum(value == 1, na.rm = TRUE),
+    total = n(),
+    percent_1 = (count_1 / total) * 100
+  ) %>%
+  ungroup()
+
+# Create the GT table
+gt_table <- table_data %>%
+  gt() %>%
+  tab_header(
+    title = "Counts and Percentages of 1 for Each Variable Stratified by transSex"
+  ) %>%
+  cols_label(
+    variable = "Variable",
+    count_1 = "Count of 1",
+    percent_1 = "Percent of 1 (%)"
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = everything()
+  ) 
+
+# Display the table
+gt_table
+
+```
+##Create Variable of Transaction and Commercial Sex
+```{r}
+table(sexBuy$transSex)
+
+#Rate of Transactional Sex is 9.4% of Data Set 
+66/(632+66)
+
+sexBuy$weighted_transSex <- ifelse(sexBuy$pastyr_sexworker == 1 & sexBuy$pastyr_gavegiftsex == 1, 3,
+                                   ifelse(sexBuy$pastyr_sexworker == 1, 2,
+                                   ifelse(sexBuy$pastyr_gavegiftsex == 1, 1, 0)))
+
+table(sexBuy$weighted_transSex)
+```
+
+
+##Sexual Risk and Transactional Sex
+```{r}
+library(stats)
+
+#Condom Use
+sexBuy$transSex_nocondom <- ifelse(sexBuy$pastyr_gavegiftsex_nocondom == 1 | sexBuy$pastyr_sexworker_nocondom == 1, 1, 0)
+
+table(sexBuy$transSex_nocondom)
+41/66
+
+# Fit the models
+mod1 <- glm(sexBuy$hivstat ~ sexBuy$transSex, family = binomial())
+mod2 <- lm(sexBuy$hiv_risk ~ sexBuy$transSex)
+mod3 <- glm(sexBuy$pastyr_nocondom ~ sexBuy$transSex, family = binomial())
+mod4 <- glm(sexBuy$circumcised ~ sexBuy$transSex, family = binomial())
+mod5 <- lm(sexBuy$sexpartners_pastyr ~ sexBuy$transSex)
+mod6 <- lm(sexBuy$sexpartners_lifetime ~ sexBuy$transSex)
+mod7 <- glm(sexBuy$pastyr_talkcondom ~ sexBuy$transSex, family = binomial())
+mod8 <- glm(sexBuy$pastyr_sti ~ sexBuy$transSex, family = binomial())
+
+# Extract p-values and coefficients from the model summaries
+coefficients <- c(
+  summary(mod1)$coefficients[2, 1],  # for mod1 (logistic regression) - coefficient
+  summary(mod2)$coefficients[2, 1],  # for mod2 (linear regression) - coefficient
+  summary(mod3)$coefficients[2, 1],  # for mod3 (logistic regression) - coefficient
+  summary(mod4)$coefficients[2, 1],  # for mod4 (logistic regression) - coefficient
+  summary(mod5)$coefficients[2, 1],  # for mod5 (linear regression) - coefficient
+  summary(mod6)$coefficients[2, 1],  # for mod6 (linear regression) - coefficient
+  summary(mod7)$coefficients[2, 1],   # for mod7 (logistic regression) - coefficient
+  summary(mod8)$coefficients[2, 1]   # for mod8 (logistic regression) - coefficient
+)
+
+p_values <- c(
+  summary(mod1)$coefficients[2, 4],  # for mod1 (logistic regression) - p-value
+  summary(mod2)$coefficients[2, 4],  # for mod2 (linear regression) - p-value
+  summary(mod3)$coefficients[2, 4],  # for mod3 (logistic regression) - p-value
+  summary(mod4)$coefficients[2, 4],  # for mod4 (logistic regression) - p-value
+  summary(mod5)$coefficients[2, 4],  # for mod5 (linear regression) - p-value
+  summary(mod6)$coefficients[2, 4],  # for mod6 (linear regression) - p-value
+  summary(mod7)$coefficients[2, 4],
+  summary(mod8)$coefficients[2, 1]# for mod7 (logistic regression) - p-value
+)
+
+# Apply Bonferroni correction
+p_adjusted <- p.adjust(p_values, method = "bonferroni")
+
+# Create the results table with coefficients
+results_table <- data.frame(
+  Test = c("mod1 (hivstat)", "mod2 (hiv_risk)", "mod3 (pastyr_nocondom)",
+           "mod4 (circumcised)", "mod5 (sexpartners_pastyr)", 
+           "mod6 (sexpartners_lifetime)", "mod7 (pastyr_talkcondom)", "mod8 (sti)"),
+  Coefficient = coefficients,
+  P_Value = p_values,
+  Adjusted_P_Value = p_adjusted
+)
+
+# Print the table
+print(results_table)
+
+
+```
+
+
+
+
+
+
+
+
+
+#Part Two - Multivariate logit model
+
+##Exploratory LASSO Modeling
+```{r}
+library(tidyverse)
+library(haven)
+library(glmnet)
+names(sexBuy)
+table(sexBuy$phys_viol_b)
+
+# Remove rows with missing values in the relevant columns
+sexBuy_clean <- sexBuy %>%
+  dplyr::select(transSex, binge_drink, current_abuse_b, alcoholdays, ace_fviol, hist_sex_b, current_abuse_b, hfiascat, age,  phys_viol_b, mstatus, ace_aemot, newAbuse, total_ace) %>%
+  na.omit()
+
+sexBuy_clean$mstatus <- as.factor(sexBuy_clean$mstatus)
+# Prepare data
+X <- model.matrix(transSex ~ binge_drink  + current_abuse_b + ace_aemot + newAbuse + total_ace + alcoholdays + hist_sex_b +phys_viol_b + current_abuse_b +  hfiascat + age + as.factor(mstatus) , data = sexBuy_clean)[,-1]
+y <- sexBuy_clean$transSex
+
+# Perform cross-validated lasso regression
+set.seed(123)
+cv.lasso <- cv.glmnet(X, y, alpha = 1, family = "binomial")
+
+# Print optimal lambda
+print(cv.lasso$lambda.min)
+
+# Fit final lasso model with optimal lambda
+lasso_model <- glmnet(X, y, alpha = 1, lambda = cv.lasso$lambda.min, family = "binomial")
+
+# Extract coefficients
+lasso_coefficients <- coef(lasso_model)
+print(lasso_coefficients)
+
+```
+
+#Final Model 
+```{r}
+library(sandwich)
+library(lmtest)
+library(stargazer)
+library(car)
+
+sexBuy$mstatus2 <- ifelse(sexBuy$mstatus ==3,0, sexBuy$mstatus)
+
+table(sexBuy$mstatus2)
+
+# Fit the logistic regression model
+model <- glm(transSex ~  binge_drink + newAbuse + current_abuse + historical_sex_abuse + phys_viol_b + total_ace + factor(mstatus2) , 
+             family = binomial, data = sexBuy)
+
+# Calculate robust standard errors
+robust_se <- coeftest(model, vcov = vcovHC(model, type = "HC0"))
+
+# Exponentiate the coefficients to get adjusted odds ratios
+exp_coef <- exp(coef(model))
+
+# Create a data frame for adjusted odds ratios and robust standard errors
+adjusted_odds_ratios <- data.frame(
+  Coefficient = names(exp_coef),
+  Adjusted_Odds_Ratio = exp_coef,
+  Robust_SE = robust_se[, "Std. Error"]
+)
+
+# Print the adjusted odds ratios
+print(adjusted_odds_ratios)
+
+# Create a stargazer table with the model
+getwd()
+
+setwd("/Users/sarahsowell/Downloads")
+
+
+stargazer(model, type = "html", out = "pdf2.html",
+          coef = list(exp_coef),
+  dep.var.labels = c("Engagement in Trans. Sex"),
+  covariate.labels = c("Intercept", "Binge Drinking", "Exp. of Phys/Verbal Abuse", "Current Sex Abuse", "Hist. Sex Abuse",  "Current Phys. Violence","Total Ace" , "Married", "Divorced/Widowed"),
+          se = list(robust_se[, "Std. Error"]),
+          p = list(robust_se[, "Pr(>|z|)"]),
+          intercept.bottom = FALSE,
+          notes = "Robust standard errors in parentheses. Coefficients are exponentiated (Adjusted Odds Ratios).")
+
+
+```
+
+#Testing for Mediation - Results not Signficant
+```{r}
+library(bda)
+table(sexBuy$total_ace)
+
+sexBuy$high_ace <- ifelse(sexBuy$total_ace > 3,1,0)
+# Mediator model (historical_sex_abuse -> binge_drink)
+med_model <- glm(binge_drink ~ high_ace,
+                 family = binomial, data = sexBuy)
+
+# Outcome model (historical_sex_abuse + binge_drink -> transSex)
+out_model <- glm(transSex ~ high_ace + binge_drink,
+                 family = binomial, data = sexBuy)
+
+# Extract the coefficients and standard errors
+a <- coef(med_model)["high_ace"]
+b <- coef(out_model)["binge_drink"]
+sa <- summary(med_model)$coefficients["high_ace", "Std. Error"]
+sb <- summary(out_model)$coefficients["binge_drink", "Std. Error"]
+
+# Perform Sobel test
+sobel_test <- function(a, b, sa, sb) {
+  sobel_statistic <- (a * b) / sqrt(b^2 * sa^2 + a^2 * sb^2)
+  p_value <- 2 * (1 - pnorm(abs(sobel_statistic)))
+  return(list(statistic = sobel_statistic, p_value = p_value))
+}
+
+# Calculate Sobel test statistic and p-value
+sobel_result <- sobel_test(a, b, sa, sb)
+
+# Print the results
+print(paste("Sobel test statistic:", sobel_result$statistic))
+print(paste("P-value:", sobel_result$p_value))
+
+
+model <- glm(transSex ~ binge_drink*total_ace, data = sexBuy)
+
+
+```
+
+```{r}
+# Load necessary packages
+library(ggplot2)
+library(dplyr)
+library(effects)
+
+# Fit the logistic regression model
+model <- glm(transSex ~ binge_drink * total_ace, data = sexBuy, family = binomial)
+
+# Create a new data frame for predictions
+new_data <- expand.grid(
+  binge_drink = unique(sexBuy$binge_drink),
+  total_ace = seq(min(sexBuy$total_ace), max(sexBuy$total_ace), length.out = 100)
+)
+
+# Generate predicted probabilities
+new_data$predicted_prob <- predict(model, newdata = new_data, type = "response")
+
+# Plot the interaction
+ggplot(new_data, aes(x = total_ace, y = predicted_prob, color = factor(binge_drink))) +
+  geom_line(size = 1) +
+  labs(
+    title = "Interaction Effect of Binge Drinking and Total ACE on Transactional Sex",
+    x = "Total ACE",
+    y = "Predicted Probability of Transactional Sex",
+    color = "Binge Drinking"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+#Examining Multicolinearity 
+```{r}
+library(car)
+
+# VIF - Background Factors & Alcohol
+linear_model_revised <- (lm(transSex ~ binge_drink  +  ace_fviol + historical_sex_abuse + ace_aphys + total_ace + current_abuse + age, data = sexBuy))
+
+
+
+vif_values_revised <- vif(linear_model_revised)
+print(vif_values_revised)
+```
+
+
+
+
+#Rates of Sexual Abuse
+```{r}
+sexBuy$rates_abuse <- ifelse(sexBuy$current_abuse_b == 1 & sexBuy$hist_sex_b == 1, 3,
+                       ifelse(sexBuy$current_abuse_b == 1, 2,
+                              ifelse(sexBuy$hist_sex_b == 1, 1, 0)))
+
+table(sexBuy$rates_abuse)
+8/694
+
+(54+50+8)/694
+
+```
+
+
+
+
