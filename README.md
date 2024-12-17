@@ -1,3 +1,3 @@
-# Jessica-Research-Files
+# YSNAP-Research-Files
 
-Files for all projects related to the Uganda HIV research project
+Files for all projects related to the R01 Uganda Youth HIV and Alcohol Use Norms Grant 
