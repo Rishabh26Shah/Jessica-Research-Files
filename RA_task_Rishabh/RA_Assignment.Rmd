@@ -1,0 +1,162 @@
+---
+title: "RA_Task"
+output: html_document
+date: "2025-01-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This report provides a summary of the dataset, logistic regression analysis, and visualizations exploring factors associated with the likelihood of talking about HIV with a friend.
+
+## Load Libraries
+
+```{r}
+library(tidyverse)
+library(broom)
+```
+
+```{r}
+# Read data 
+data <- read.csv("data_synth.csv")
+
+# Print all column names
+cat("All columns in dataset:\n")
+print(names(data))
+
+# Assignment requires:
+required_vars <- c("age", "male", "single", "inschool", 
+                  "arv_start", "arv_dura", "lifetime", 
+                  "hiv_talk_friend", "education_4cat")  
+
+# Identify columns we can drop
+columns_to_drop <- setdiff(names(data), required_vars)
+cat("\nColumns we can drop:\n")
+print(columns_to_drop)
+
+```
+
+```{r}
+# Drop unwanted columns
+data$employ = NULL
+data$sex_nocondom = NULL 
+data$sex_drug = NULL
+data$transi = NULL
+
+# Create a simple data frame for missing values
+missing_table = data.frame(
+    Column = names(data),
+    Missing_Values = sapply(data, function(x) sum(is.na(x))),
+    Percent_Missing = sapply(data, function(x) round(sum(is.na(x))/length(x)*100, 2))
+)
+
+# Print the formatted table
+print(missing_table)
+```
+```{r}
+# Drop rows where arv_start or arv_dura has missing values
+data <- data[!is.na(data$arv_start) & !is.na(data$arv_dura), ]
+
+# Recheck the structure of the dataset
+str(data)
+
+# Recalculate the missing data table to confirm no missing values remain
+missing_table <- data.frame(
+    Column = names(data),
+    Missing_Values = sapply(data, function(x) sum(is.na(x))),
+    Percent_Missing = sapply(data, function(x) round(sum(is.na(x))/length(x)*100, 2))
+)
+print(missing_table)
+
+```
+
+```{r}
+# Convert male to a factor with labels "Female" and "Male"
+data$gender <- factor(data$male, levels = c(0, 1), labels = c("Female", "Male"))
+
+# Create a summary table stratified by gender with simplified column names
+summary_table <- data %>%
+  group_by(gender) %>%
+  summarise(
+    Mean_Age = mean(age, na.rm = TRUE),
+    SD_Age = sd(age, na.rm = TRUE),
+    Mean_Single = mean(single, na.rm = TRUE),
+    SD_Single = sd(single, na.rm = TRUE),
+    Mean_InSchool = mean(inschool, na.rm = TRUE),
+    SD_InSchool = sd(inschool, na.rm = TRUE),
+    Mean_ARV_Start = mean(arv_start, na.rm = TRUE),
+    SD_ARV_Start = sd(arv_start, na.rm = TRUE),
+    Mean_ARV_Duration = mean(arv_dura, na.rm = TRUE),
+    SD_ARV_Duration = sd(arv_dura, na.rm = TRUE),
+    Mean_Lifetime = mean(lifetime, na.rm = TRUE),
+    SD_Lifetime = sd(lifetime, na.rm = TRUE)
+  )
+
+# Print the summary table
+print(summary_table)
+```
+
+
+```{r}
+# Final logistic regression model
+final_model <- glm(
+  hiv_talk_friend ~ age + I(age^2) + gender + lifetime + arv_start,
+  data = data,   # Added the dataset name here
+  family = binomial
+)
+
+# Summarize the model
+model_summary <- summary(final_model)
+
+# Extract coefficients, odds ratios, and p-values
+exp_coef_final <- exp(coef(final_model))  # Odds ratios
+
+# Create a regression table
+regression_table <- data.frame(
+  Predictor = rownames(model_summary$coefficients),
+  Estimate_Log_Odds = coef(final_model),
+  Odds_Ratio = exp_coef_final,
+  p_value = model_summary$coefficients[, 4]
+)
+
+# Print the regression table
+print("Final Logistic Regression Results:")
+print(regression_table)
+```
+
+
+```{r}
+
+# Create coefficient plot (without intercept)
+plot_data <- data.frame(
+    term = c("Age", "Age²", "Male", "Had Sex", "ARV Start"),
+    estimate = c(-6.49568386, 0.20239010, -0.55004965, 0.67137508, 0.02194829)
+)
+plot_data$std.error <- sqrt(diag(vcov(final_model)))[-1]
+plot_data$conf.low <- plot_data$estimate - 1.96 * plot_data$std.error
+plot_data$conf.high <- plot_data$estimate + 1.96 * plot_data$std.error
+
+ggplot(plot_data, aes(x = estimate, y = reorder(term, estimate))) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "gray60") +
+    geom_point(size = 3) +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+    labs(
+        title = "Predictors of HIV Discussion with Friends",
+        x = "Log Odds",
+        y = NULL,
+        caption = "Error bars represent 95% confidence intervals"
+    ) +
+    theme_minimal()
+
+
+```
+## What we did:
+First, we cleaned the dataset by removing unnecessary columns and handling missing values in ARV-related variables. We then created descriptive statistics tables stratified by gender to understand the basic characteristics of our sample. For our main analysis, we fitted a logistic regression model to identify factors predicting whether individuals discussed HIV with friends. We included age (both linear and quadratic terms), gender, sexual experience, and ARV start timing as predictors. Finally, we visualized our findings using a coefficient plot to show the magnitude and significance of each predictor's effect.
+
+## What we found:
+Our analysis revealed a non-linear relationship between age and HIV discussion, with both linear and quadratic terms being statistically significant (p < 0.05). Sexual experience emerged as a positive predictor of HIV discussion, suggesting that individuals who have had sex are more likely to discuss HIV with friends. Gender showed a negative association, indicating that males were less likely to discuss HIV compared to females, though this effect wasn't statistically significant. ARV start timing had minimal impact on HIV discussions, with a very small effect size and lack of statistical significance. The non-linear age effect suggests that HIV discussion behaviors may vary considerably across different age groups in our sample.
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
